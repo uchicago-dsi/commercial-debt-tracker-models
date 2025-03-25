@@ -119,4 +119,4 @@ Given any input text describing debt instruments, agreements, and related proper
 - `governed_by` / `governs`
 - `type` (with values: `loan`, `bond`, `credit line`, `revolving credit`)
 
-Use these compiled instructions to guide your annotations on any provided text.
+Use these compiled instructions to guide your annotations on any provided text. It is very important that you reply with the original text with these tags and attributes added and nothing else.
