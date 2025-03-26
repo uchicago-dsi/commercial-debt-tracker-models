@@ -70,15 +70,14 @@ def run_model_with_output_validation(
     """
     sample_id = sample["id"]
     input_text = sample["text"]
-    error_message = ""
-    for attempt_no in range(max_retries):
-        messages = [
-            {
-                "role": "user",
-                "content": f"{instructions}\n{error_message}\n{input_text}",
-            },
-        ]
+    messages = [
+        {
+            "role": "user",
+            "content": f"{instructions}\n{input_text}",
+        }
+    ]
 
+    for attempt_no in range(max_retries):
         formatted_text = tokenizer.apply_chat_template(
             messages,
             tokenize=False,
@@ -95,12 +94,17 @@ def run_model_with_output_validation(
         ]
         response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
         errors = get_llm_output_errors(response, input_text)
+
         if errors:
-            error_message = "\nYour previous attempt had the following errors:\n"
-            error_message += "\n".join(errors)
-            error_message += "\nPlease correct these errors and try again."
+            error_message = "Your previous response had these errors:\n" + "\n".join(
+                errors
+            )
+            error_message += "\nPlease correct these errors and provide a new response."
+            messages.append({"role": "assistant", "content": response})
+            messages.append({"role": "user", "content": error_message})
         else:
             break
+
     results = {
         "input_text_id": sample_id,
         "input_text": input_text,
