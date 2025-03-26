@@ -1,10 +1,16 @@
-import pandas as pd
-import torch
-import time
-from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
-from pathlib import Path
-from huggingface_hub import login
+import argparse
 import os
+import time
+from pathlib import Path
+
+import pandas as pd
+import submitit
+import torch
+from huggingface_hub import login
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+
+from cdt.postprocess import get_llm_output_errors
+
 
 login(token=os.environ["HF_TOKEN"])
 
@@ -35,24 +41,42 @@ with (BASE_DIR / "data" / "prompts" / "combined-prompt.md").open(
 input_df = pd.read_csv(BASE_DIR / "data" / "banktrack-8K-230501-01-v3.csv")
 
 
-def run_auto_model_for_causalLM_on_prompt(
-    model_name: str, instructions: str, data: pd.DataFrame, flush_every: int = 1
-) -> None:
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name, torch_dtype="auto", device_map="auto"
-    )
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    results = []
-    counter = 0
-    output_file = f"{model_name.split('/')[-1]}-results.csv"
+def get_gpu_details() -> dict[str, str]:
+    """Retrieve information of GPU"""
+    return {
+        "device": torch.cuda.get_device_name(0),
+        "memory": f"{torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB",
+        "allocated": f"{torch.cuda.memory_allocated(0) / 1024**3:.2f} GB",
+        "reserved": f"{torch.cuda.memory_reserved(0) / 1024**3:.2f} GB",
+        "clock_rate": f"{torch.cuda.get_device_properties(0).clock_rate / 1e3:.2f} GHz",
+    }
 
-    # Process each row in the CSV
-    for _, row in data.iterrows():
-        sample_id = row["id"]
-        input_text = row["text"]
 
+def run_model_with_output_validation(
+    model: AutoModelForCausalLM,
+    tokenizer: AutoTokenizer,
+    instructions: str,
+    sample: pd.Series,
+    max_retries: int,
+) -> dict:
+    """Run the model on a single sample and validate the output
+
+    Args:
+        model: The model from AutoModelForCausalLM
+        tokenizer: The tokenizer to use
+        instructions: The instructions to use
+        sample: row of dataframe with 'id' and 'text' columns
+        max_retries: Maximum number of retries for a given sample
+    """
+    sample_id = sample["id"]
+    input_text = sample["text"]
+    error_message = ""
+    for attempt_no in range(max_retries):
         messages = [
-            {"role": "user", "content": f"{instructions}\n{input_text}"},
+            {
+                "role": "user",
+                "content": f"{instructions}\n{error_message}\n{input_text}",
+            },
         ]
 
         formatted_text = tokenizer.apply_chat_template(
@@ -64,37 +88,73 @@ def run_auto_model_for_causalLM_on_prompt(
         model_inputs = tokenizer([formatted_text], return_tensors="pt").to(model.device)
         generated_ids = model.generate(**model_inputs, max_new_tokens=MAX_NEW_TOKENS)
         end_time = time.perf_counter()
+        gpu_information = get_gpu_details()
         generated_ids = [
             output_ids[len(input_ids) :]
             for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
         ]
         response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+        errors = get_llm_output_errors(response, input_text)
+        if errors:
+            error_message = "\nYour previous attempt had the following errors:\n"
+            error_message += "\n".join(errors)
+            error_message += "\nPlease correct these errors and try again."
+        else:
+            break
+    results = {
+        "input_text_id": sample_id,
+        "input_text": input_text,
+        "response": response,
+        "inference_time": end_time - start_time,
+        "errors": errors,
+        "attempts": attempt_no + 1,
+    }
+    results.update(gpu_information)
+    return results
 
-        # Append result to our list
-        results.append(
-            {
-                "input_text_id": sample_id,
-                "input_text": input_text,
-                "model_name": model_name,
-                "response": response,
-                "inference_time": end_time - start_time
-            }
+
+def run_model_on_data(
+    model_name: str,
+    instructions: str,
+    data: pd.DataFrame,
+    flush_every: int = 1,
+    max_retries: int = 3,
+    output_file: str = None,
+) -> None:
+    """Run specified model based on instructions, performing basic checks on output
+
+    Args:
+        model_name (str): The model name to use from huggingface model hub
+        instructions: Detailed instructions to be passed to the model
+        data: The input data to be processed. Must have columns "id" and "text"
+        flush_every: Number of samples to process before flushing to CSV
+        max_retries: Maximum number of retries for a given sample
+        output_file: The output file to write results to. If None, defaults to
+            {model_name}-results.csv
+    """
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name, torch_dtype="auto", device_map="auto"
+    )
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    results = []
+    counter = 0
+    if output_file is None:
+        output_file = f"{model_name.split('/')[-1]}-results.csv"
+    for _, row in data.iterrows():
+        result = run_model_with_output_validation(
+            model, tokenizer, instructions, row, max_retries
         )
-
+        results.append(result)
         counter += 1
-        # After every N samples, write out the results to a CSV file.
         if counter % flush_every == 0:
-            # Convert current results list into a DataFrame and append to CSV.
             pd.DataFrame(results).to_csv(
                 output_file,
                 mode="a",
                 index=False,
                 header=False,
             )
-            print(f"Flushed {counter} samples to results.csv")
-            results = []  # clear the list after flushing
-
-    # Write any remaining results after processing all rows
+            print(f"Flushed {counter} samples to {output_file}")
+            results = []
     if results:
         pd.DataFrame(results).to_csv(
             output_file,
@@ -103,12 +163,17 @@ def run_auto_model_for_causalLM_on_prompt(
             header=False,
         )
         print(f"Finished processing all samples for {model_name}")
+        print(f"Results written to {output_file}")
+        print(f"Total samples processed: {counter}")
+        print(
+            f"Average number of attempts per sample: {sum(r['attempts'] for r in results) / len(results):.2f}"
+        )
+        print(
+            f"Average inference time per sample: {sum(r['inference_time'] for r in results) / len(results):.2f}"
+        )
 
 
 if __name__ == "__main__":
-    import submitit
-    import argparse
-
     executor = submitit.AutoExecutor(folder=BASE_DIR / "logs")
     executor.update_parameters(
         slurm_partition="general",
@@ -126,14 +191,11 @@ if __name__ == "__main__":
     with executor.batch():
         for model in args.models:
             if args.local:
-                run_auto_model_for_causalLM_on_prompt(model, instruction_text, input_df)
+                run_model_on_data(model, instruction_text, input_df)
             else:
                 executor.submit(
-                    run_auto_model_for_causalLM_on_prompt,
+                    run_model_on_data,
                     model,
                     instruction_text,
                     input_df,
                 )
-
-
-
