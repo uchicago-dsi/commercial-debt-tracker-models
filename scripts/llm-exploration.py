@@ -43,12 +43,13 @@ input_df = pd.read_csv(BASE_DIR / "data" / "banktrack-8K-230501-01-v3.csv")
 
 def get_gpu_details() -> dict[str, str]:
     """Retrieve information of GPU"""
+    torch.cuda.reset_peak_memory_stats(0)
     return {
         "device": torch.cuda.get_device_name(0),
         "memory": f"{torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB",
-        "allocated": f"{torch.cuda.memory_allocated(0) / 1024**3:.2f} GB",
+        "max_allocated": f"{torch.cuda.max_memory_allocated(0) / 1024**3:.2f} GB",
         "reserved": f"{torch.cuda.memory_reserved(0) / 1024**3:.2f} GB",
-        "clock_rate": f"{torch.cuda.get_device_properties(0).clock_rate / 1e3:.2f} GHz",
+        "clock_rate": f"{torch.cuda.clock_rate(0) / 1e3:.2f} GHz",
     }
 
 
