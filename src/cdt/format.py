@@ -1,11 +1,33 @@
 import pandas as pd
 import uuid
+import spacy
 from bs4 import BeautifulSoup, NavigableString
 from collections import defaultdict
 
+nlp = spacy.load("en_core_web_sm", disable=["ner", "parser", "lemmatizer"])
+
+
+def get_token_indices(text: str, char_start: int, char_end: int) -> tuple[int, int]:
+    """Get token start and end indices for a span of text."""
+    doc = nlp(text)
+    token_start = None
+    token_end = None
+
+    curr_char = 0
+    for i, token in enumerate(doc):
+        token_chars = len(token.text_with_ws)
+        if curr_char <= char_start < curr_char + token_chars and token_start is None:
+            token_start = i
+        if curr_char <= char_end <= curr_char + token_chars:
+            token_end = i + 1
+            break
+        curr_char += token_chars
+
+    return token_start or 0, token_end or len(doc)
+
 
 def get_text_indices(tag, soup):
-    """Get the start and end character indices of tag's text in the original text."""
+    """Get character and token indices of tag's text in the original text."""
     # Get all text nodes before this tag
     text_before = ""
     current = tag
@@ -28,49 +50,49 @@ def get_text_indices(tag, soup):
                 text_before = current.get_text() + text_before
         parent = parent.parent
 
+    # Get character indices
     start = len(text_before)
     end = start + len(tag.get_text())
-    return start, end
+
+    # Get token indices
+    tok_start, tok_end = get_token_indices(soup.get_text(), start, end)
+
+    return start, end, tok_start, tok_end
 
 
 def get_coreference_map(soup):
-    """
-    Create a mapping of coreference IDs to their corresponding tag contents.
-
-    Args:
-        soup (BeautifulSoup): Parsed HTML of the annotated text.
-
-    Returns:
-        dict: A dictionary mapping coreference IDs to lists of tag information.
-    """
+    """Create a mapping of coreference IDs to their corresponding tag contents."""
     coreference_map = defaultdict(list)
+    full_text = soup.get_text()
+
     for tag in soup.find_all(attrs={"coreference": True}):
-        start, end = get_text_indices(tag, soup)
+        char_start, char_end, tok_start, tok_end = get_text_indices(tag, soup)
         coref_ids = tag["coreference"].split()
         for coref_id in coref_ids:
             coreference_map[coref_id].append(
-                {"text": tag.text, "start": start, "end": end}
+                {
+                    "text": tag.text,
+                    "char_start": char_start,
+                    "char_end": char_end,
+                    "token_start": tok_start,
+                    "token_end": tok_end,
+                }
             )
     return dict(coreference_map)
 
 
 def extract_instrument_properties(soup):
-    """
-    Extract properties of debt instruments from the annotated text.
-
-    Args:
-        soup (BeautifulSoup): Parsed HTML of the annotated text.
-
-    Returns:
-        dict: A dictionary of instrument properties keyed by instrument ID.
-    """
+    """Extract properties of debt instruments from the annotated text."""
     instrument_properties = defaultdict(dict)
+    full_text = soup.get_text()
 
     for instrument_tag in soup.find_all(attrs={"instrument": True}):
         instrument_ids = instrument_tag["instrument"].split()
         property_name = instrument_tag.name
         property_value = instrument_tag.text
-        start, end = get_text_indices(instrument_tag, soup)
+        char_start, char_end, tok_start, tok_end = get_text_indices(
+            instrument_tag, soup
+        )
         coref_id = instrument_tag.get("coreference")
 
         for instrument_id in instrument_ids:
@@ -81,26 +103,47 @@ def extract_instrument_properties(soup):
                 }
 
             if property_name == "name":
-                instrument_properties[instrument_id]["name"] = property_value
-                instrument_properties[instrument_id]["name_start"] = start
-                instrument_properties[instrument_id]["name_end"] = end
-                instrument_properties[instrument_id]["type"] = instrument_tag.get(
-                    "type"
+                instrument_properties[instrument_id].update(
+                    {
+                        "name": property_value,
+                        "name_char_start": char_start,
+                        "name_char_end": char_end,
+                        "name_token_start": tok_start,
+                        "name_token_end": tok_end,
+                        "type": instrument_tag.get("type"),
+                    }
                 )
             elif property_name == "lender":
                 if "lender" not in instrument_properties[instrument_id]:
-                    instrument_properties[instrument_id]["lender"] = []
-                    instrument_properties[instrument_id]["lender_start"] = []
-                    instrument_properties[instrument_id]["lender_end"] = []
+                    instrument_properties[instrument_id].update(
+                        {
+                            "lender": [],
+                            "lender_char_start": [],
+                            "lender_char_end": [],
+                            "lender_token_start": [],
+                            "lender_token_end": [],
+                        }
+                    )
                 instrument_properties[instrument_id]["lender"].append(property_value)
-                instrument_properties[instrument_id]["lender_start"].append(start)
-                instrument_properties[instrument_id]["lender_end"].append(end)
+                instrument_properties[instrument_id]["lender_char_start"].append(
+                    char_start
+                )
+                instrument_properties[instrument_id]["lender_char_end"].append(char_end)
+                instrument_properties[instrument_id]["lender_token_start"].append(
+                    tok_start
+                )
+                instrument_properties[instrument_id]["lender_token_end"].append(tok_end)
             else:
-                instrument_properties[instrument_id][property_name] = property_value
-                instrument_properties[instrument_id][f"{property_name}_start"] = start
-                instrument_properties[instrument_id][f"{property_name}_end"] = end
+                instrument_properties[instrument_id].update(
+                    {
+                        property_name: property_value,
+                        f"{property_name}_char_start": char_start,
+                        f"{property_name}_char_end": char_end,
+                        f"{property_name}_token_start": tok_start,
+                        f"{property_name}_token_end": tok_end,
+                    }
+                )
 
-            # Store coreference ID if present
             if coref_id:
                 instrument_properties[instrument_id][
                     f"{property_name}_coreferences"
@@ -156,10 +199,16 @@ def convert_to_dataframes(instrument_properties, agreements):
         instruments_df["lender"] = instruments_df["lender"].apply(
             lambda x: ", ".join(str(y) for y in x) if isinstance(x, list) else x
         )
-        instruments_df["lender_start"] = instruments_df["lender_start"].apply(
+        instruments_df["lender_char_start"] = instruments_df["lender_char_start"].apply(
             lambda x: ", ".join(str(y) for y in x) if isinstance(x, list) else x
         )
-        instruments_df["lender_end"] = instruments_df["lender_end"].apply(
+        instruments_df["lender_char_end"] = instruments_df["lender_char_end"].apply(
+            lambda x: ", ".join(str(y) for y in x) if isinstance(x, list) else x
+        )
+        instruments_df["lender_token_start"] = instruments_df[
+            "lender_token_start"
+        ].apply(lambda x: ", ".join(str(y) for y in x) if isinstance(x, list) else x)
+        instruments_df["lender_token_end"] = instruments_df["lender_token_end"].apply(
             lambda x: ", ".join(str(y) for y in x) if isinstance(x, list) else x
         )
 
