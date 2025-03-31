@@ -82,8 +82,9 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"Input data path {args.input_data} is not valid")
 
-    with Path(args.prompt_file).open("r", encoding="utf-8") as f:
-        instruction_text = f.read()
+    if not Path(args.prompt_file).exists():
+        raise ValueError(f"Prompt file {args.prompt_file} does not exist")
+    prompt_file = Path(args.prompt_file)
     input_df = pd.read_csv(args.input_date)
 
     executor = submitit.AutoExecutor(folder=BASE_DIR / "logs")
@@ -101,7 +102,7 @@ if __name__ == "__main__":
             input_df = pd.read_csv(input_data_file)
             for model in args.models:
                 if args.local:
-                    run_model_on_data(model, instruction_text, input_df)
+                    run_model_on_data(model, prompt_file, input_df)
                 else:
                     executor.submit(
                         run_model_on_data,
