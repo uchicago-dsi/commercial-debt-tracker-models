@@ -17,3 +17,7 @@ huggingface-hub
 submitit
 bs4
 spacy
+seqeval
+seaborn
+scikit-learn
+matplotlib
