@@ -1,0 +1,9 @@
+results/*
+output/* 
+data/*
+logs/*
+*.pyc
+*.pkl
+*.json
+*.csv
+*.log
