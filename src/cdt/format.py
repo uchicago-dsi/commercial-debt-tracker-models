@@ -157,7 +157,7 @@ def extract_entity_properties(soup: BeautifulSoup, entity_type: str) -> dict:
                 token_ends = []
                 coref_ids = []
 
-                for coref_id, values in coref_groups.items():
+                for _, values in coref_groups.items():
                     for v in values:
                         all_values.append(v["value"])
                         char_starts.append(v["char_start"])
