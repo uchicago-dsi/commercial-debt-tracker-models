@@ -20,17 +20,19 @@ MAX_NEW_TOKENS = 16000
 models = [
     "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
     "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
-    # "mistralai/Ministral-8B-Instruct-2410",
+    "mistralai/Ministral-8B-Instruct-2410",
     # "mistralai/Mistral-Small-3.1-24B-Instruct-2503",
     # "google/gemma-3-27b-it",
-    # "google/gemma-3-4b-it",
+    "google/gemma-3-4b-it",
     # "google/gemma-3-1b-it",
     "Qwen/QwQ-32B",
     #  "Qwen/Qwen2.5-Coder-7B-Instruct",
-    # "Qwen/Qwen2.5-Coder-14B-Instruct",
+    "Qwen/Qwen2.5-Coder-14B-Instruct",
     # "Qwen/Qwen2.5-Coder-0.5B-Instruct",
     "Qwen/Qwen2.5-7B-Instruct",
     "meta-llama/Llama-3.1-8B-Instruct",
+    "microsoft/Phi-4-mini-instruct",
+    "meta-llama/Llama-3.3-70B-Instruct",
 ]
 with (BASE_DIR / "data" / "prompts" / "combined-prompt.md").open(
     "r", encoding="utf-8"
@@ -43,14 +45,15 @@ input_df = pd.read_csv(BASE_DIR / "data" / "banktrack-8K-230501-01-v3.csv")
 
 def get_gpu_details() -> dict[str, str]:
     """Retrieve information of GPU"""
-    torch.cuda.reset_peak_memory_stats(0)
-    return {
+    details = {
         "device": torch.cuda.get_device_name(0),
         "memory": f"{torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB",
         "max_allocated": f"{torch.cuda.max_memory_allocated(0) / 1024**3:.2f} GB",
         "reserved": f"{torch.cuda.memory_reserved(0) / 1024**3:.2f} GB",
         "clock_rate": f"{torch.cuda.clock_rate(0) / 1e3:.2f} GHz",
     }
+    torch.cuda.reset_peak_memory_stats(0)
+    return details
 
 
 def run_model_with_output_validation(
@@ -137,8 +140,9 @@ def run_model_on_data(
         output_file: The output file to write results to. If None, defaults to
             {model_name}-results.csv
     """
+    dtype = "auto" if "gemma" not in model_name else torch.float32
     model = AutoModelForCausalLM.from_pretrained(
-        model_name, torch_dtype="auto", device_map="auto"
+        model_name, torch_dtype=dtype, device_map="auto"
     )
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     results = []
@@ -179,19 +183,28 @@ def run_model_on_data(
 
 
 if __name__ == "__main__":
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--local", action="store_true")
+    ap.add_argument("--models", nargs="+", default=models)
+    ap.add_argument("--gpu", default=None)
+    args = ap.parse_args()
+
+
+    if not args.gpu:
+        gres = "gpu:1"
+        print("Using any available GPU")
+    else:
+        gres = f"gpu:{args.gpu}:1"
+        print(f"Using GPU: {args.gpu}")
     executor = submitit.AutoExecutor(folder=BASE_DIR / "logs")
     executor.update_parameters(
         slurm_partition="general",
         slurm_time="720:00",
         slurm_mem_per_cpu="256G",
-        slurm_gres="gpu:1",
+        slurm_gres=gres,
         slurm_job_name="commercial-debt-tracker",
         slurm_array_parallelism=6,
     )
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--local", action="store_true")
-    ap.add_argument("--models", nargs="+", default=models)
-    args = ap.parse_args()
 
     with executor.batch():
         for model in args.models:
