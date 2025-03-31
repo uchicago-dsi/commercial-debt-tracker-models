@@ -1,4 +1,14 @@
-"""Run LLMs on data using submitit for batch processing."""
+"""Run LLMs on data using submitit for batch processing"
+
+Runs specified LLM on input data and saves results to file.
+Tracks:
+- GPU usage
+- Compute Time
+- Prompt used (file name and commit hash for traceability)
+- Model used
+- When the model was run
+- Number of attempts
+"""
 
 import argparse
 import os

@@ -1,5 +1,6 @@
 """Functions for running and tracking LLM inference"""
 
+from pathlib import Path
 import time
 
 import pandas as pd
@@ -7,6 +8,7 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from cdt.postprocess import get_llm_output_errors
+from cdt.utils import get_files_last_commit_hash
 
 MAX_NEW_TOKENS = 16000
 
@@ -89,9 +91,42 @@ def run_model_with_output_validation(
     return results
 
 
+def append_results_to_csv(
+    results: list[dict],
+    output_file: str,
+    prompt_commit: str,
+    model_name: str,
+    prompt_file: str,
+) -> None:
+    """Append results to CSV file
+
+    Args:
+        results: DataFrame containing results to append
+        output_file: Path to the output CSV file
+        prompt_commit: Commit hash of the prompt file
+        model_name: Name of the model used
+        prompt_file: Path to the prompt file
+    """
+    results = pd.DataFrame(results)
+    results["prompt_commit"] = prompt_commit
+    results["model"] = model_name
+    results["prompt_file"] = prompt_file
+    if not Path(output_file).exists():
+        header = True
+    else:
+        header = False
+    results.to_csv(
+        output_file,
+        mode="a",
+        index=False,
+        header=header,
+    )
+    print(f"Flushed {len(results)} samples to {output_file}")
+
+
 def run_model_on_data(
     model_name: str,
-    instructions: str,
+    prompt_file: Path,
     data: pd.DataFrame,
     flush_every: int = 1,
     max_retries: int = 3,
@@ -101,13 +136,16 @@ def run_model_on_data(
 
     Args:
         model_name (str): The model name to use from huggingface model hub
-        instructions: Detailed instructions to be passed to the model
+        prompt_file: Path to Detailed instructions to be passed to the model
         data: The input data to be processed. Must have columns "id" and "text"
         flush_every: Number of samples to process before flushing to CSV
         max_retries: Maximum number of retries for a given sample
         output_file: The output file to write results to. If None, defaults to
             {model_name}-results.csv
     """
+    with prompt_file.open("r", encoding="utf-8") as f:
+        instructions = f.read()
+    prompt_commit = get_files_last_commit_hash(prompt_file)
     dtype = "auto" if "gemma" not in model_name else torch.float32
     model = AutoModelForCausalLM.from_pretrained(
         model_name, torch_dtype=dtype, device_map="auto"
@@ -124,27 +162,28 @@ def run_model_on_data(
         results.append(result)
         counter += 1
         if counter % flush_every == 0:
-            pd.DataFrame(results).to_csv(
+            append_results_to_csv(
+                results,
                 output_file,
-                mode="a",
-                index=False,
-                header=False,
+                prompt_commit,
+                model_name,
+                prompt_file,
             )
-            print(f"Flushed {counter} samples to {output_file}")
             results = []
     if results:
-        pd.DataFrame(results).to_csv(
+        append_results_to_csv(
+            results,
             output_file,
-            mode="a",
-            index=False,
-            header=False,
+            prompt_commit,
+            model_name,
+            prompt_file,
         )
-        print(f"Finished processing all samples for {model_name}")
-        print(f"Results written to {output_file}")
-        print(f"Total samples processed: {counter}")
-        print(
-            f"Average number of attempts per sample: {sum(r['attempts'] for r in results) / len(results):.2f}"
-        )
-        print(
-            f"Average inference time per sample: {sum(r['inference_time'] for r in results) / len(results):.2f}"
-        )
+    print(f"Finished processing all samples for {model_name}")
+    print(f"Results written to {output_file}")
+    print(f"Total samples processed: {counter}")
+    print(
+        f"Average number of attempts per sample: {sum(r['attempts'] for r in results) / len(results):.2f}"
+    )
+    print(
+        f"Average inference time per sample: {sum(r['inference_time'] for r in results) / len(results):.2f}"
+    )
