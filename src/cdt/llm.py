@@ -1,12 +1,14 @@
 """Functions for running and tracking LLM inference"""
 
-from pathlib import Path
+import logging
 import time
+from pathlib import Path
 
 import pandas as pd
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from cdt.logging_utils import add_slurm_job_id
 from cdt.postprocess import get_llm_output_errors
 from cdt.utils import get_files_last_commit_hash
 
@@ -80,6 +82,7 @@ def run_model_with_output_validation(
             break
 
     results = {
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         "input_text_id": sample_id,
         "input_text": input_text,
         "response": response,
@@ -107,6 +110,7 @@ def append_results_to_csv(
         model_name: Name of the model used
         prompt_file: Path to the prompt file
     """
+    logger = logging.getLogger("cdt")
     results = pd.DataFrame(results)
     results["prompt_commit"] = prompt_commit
     results["model"] = model_name
@@ -121,16 +125,16 @@ def append_results_to_csv(
         index=False,
         header=header,
     )
-    print(f"Flushed {len(results)} samples to {output_file}")
+    logger.info(f"Flushed {len(results)} samples to {output_file}")
 
 
 def run_model_on_data(
     model_name: str,
     prompt_file: Path,
     data: pd.DataFrame,
+    output_file: Path,
     flush_every: int = 1,
     max_retries: int = 3,
-    output_file: str = None,
 ) -> None:
     """Run specified model based on instructions, performing basic checks on output
 
@@ -138,11 +142,14 @@ def run_model_on_data(
         model_name (str): The model name to use from huggingface model hub
         prompt_file: Path to Detailed instructions to be passed to the model
         data: The input data to be processed. Must have columns "id" and "text"
+        output_file: The output dir to write results to.
         flush_every: Number of samples to process before flushing to CSV
         max_retries: Maximum number of retries for a given sample
-        output_file: The output file to write results to. If None, defaults to
-            {model_name}-results.csv
     """
+    logger = logging.getLogger("cdt")
+    logger = add_slurm_job_id(logger)
+    logger.info(f"Starting inference with model: {model_name}")
+
     with prompt_file.open("r", encoding="utf-8") as f:
         instructions = f.read()
     prompt_commit = get_files_last_commit_hash(prompt_file)
@@ -153,8 +160,6 @@ def run_model_on_data(
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     results = []
     counter = 0
-    if output_file is None:
-        output_file = f"{model_name.split('/')[-1]}-results.csv"
     for _, row in data.iterrows():
         result = run_model_with_output_validation(
             model, tokenizer, instructions, row, max_retries
@@ -178,12 +183,12 @@ def run_model_on_data(
             model_name,
             prompt_file,
         )
-    print(f"Finished processing all samples for {model_name}")
-    print(f"Results written to {output_file}")
-    print(f"Total samples processed: {counter}")
-    print(
-        f"Average number of attempts per sample: {sum(r['attempts'] for r in results) / len(results):.2f}"
-    )
-    print(
-        f"Average inference time per sample: {sum(r['inference_time'] for r in results) / len(results):.2f}"
-    )
+
+    avg_attempts = sum(r["attempts"] for r in results) / len(results)
+    avg_inference = sum(r["inference_time"] for r in results) / len(results)
+
+    logger.info(f"Finished processing all samples for {model_name}")
+    logger.info(f"Results written to {output_file}")
+    logger.info(f"Total samples processed: {counter}")
+    logger.info(f"Average number of attempts per sample: {avg_attempts:.2f}")
+    logger.info(f"Average inference time per sample: {avg_inference:.2f}")
