@@ -241,3 +241,263 @@ def convert_dataset_to_seqeval(
         all_tokens.append(tokens)
 
     return {"tags": all_tags, "tokens": all_tokens}
+
+
+def match_entities(
+    true_df: pd.DataFrame,
+    pred_df: pd.DataFrame,
+    coref_true: dict,
+    coref_pred: dict,
+    min_iou: float = 0.5,
+    method: str = "char",
+) -> list[tuple[int, int]]:
+    """Match entities (agreements or instruments) based on name clusters.
+
+    Args:
+        true_df: Ground truth entities DataFrame
+        pred_df: Predicted entities DataFrame
+        coref_true: Ground truth coreference map
+        coref_pred: Predicted coreference map
+        min_iou: Minimum IOU threshold for matching spans
+        method: Either 'char' or 'token' for span comparison method
+
+    Returns:
+        List of (true_idx, pred_idx) pairs of matching entities
+    """
+    matches = []
+    suffix = f"{method}_start", f"{method}_end"
+
+    for i, true_row in true_df.iterrows():
+        true_name_coref = true_row.get("name_coreferences")
+        true_cluster = coref_true.get(true_name_coref, [])
+        if not true_cluster and "name" in true_row:
+            true_cluster = [
+                {
+                    "text": true_row["name"],
+                    f"{method}_start": true_row[f"name_{suffix[0]}"],
+                    f"{method}_end": true_row[f"name_{suffix[1]}"],
+                }
+            ]
+
+        for j, pred_row in pred_df.iterrows():
+            pred_name_coref = pred_row.get("name_coreferences")
+            pred_cluster = coref_pred.get(pred_name_coref, [])
+            if not pred_cluster and "name" in pred_row:
+                pred_cluster = [
+                    {
+                        "text": pred_row["name"],
+                        f"{method}_start": pred_row[f"name_{suffix[0]}"],
+                        f"{method}_end": pred_row[f"name_{suffix[1]}"],
+                    }
+                ]
+
+            if compare_coreference_clusters(
+                true_cluster, pred_cluster, min_iou, method
+            ):
+                matches.append((i, j))
+                break
+
+    return matches
+
+
+def evaluate_type_agreement(
+    true_df: pd.DataFrame, pred_df: pd.DataFrame, entity_matches: list[tuple[int, int]]
+) -> dict:
+    """Evaluate agreement on entity types between matched entities.
+
+    Args:
+        true_df: Ground truth entities DataFrame
+        pred_df: Predicted entities DataFrame
+        entity_matches: List of (true_idx, pred_idx) pairs
+
+    Returns:
+        Dict containing precision, recall, and F1 for type matching
+    """
+    correct = 0
+    for true_idx, pred_idx in entity_matches:
+        if true_df.iloc[true_idx].get("type") == pred_df.iloc[pred_idx].get("type"):
+            correct += 1
+
+    precision = correct / len(entity_matches) if entity_matches else 0
+    recall = correct / len(true_df) if len(true_df) > 0 else 0
+    f1 = (
+        2 * (precision * recall) / (precision + recall) if precision + recall > 0 else 0
+    )
+
+    return {"type_precision": precision, "type_recall": recall, "type_f1": f1}
+
+
+def evaluate_property_agreement(
+    true_df: pd.DataFrame,
+    pred_df: pd.DataFrame,
+    entity_matches: list[tuple[int, int]],
+    properties: set[str] = None,
+) -> dict:
+    """Evaluate agreement on property values between matched entities.
+
+    Args:
+        true_df: Ground truth entities DataFrame
+        pred_df: Predicted entities DataFrame
+        entity_matches: List of (true_idx, pred_idx) pairs
+        properties: Set of property names to evaluate (if None, uses all shared properties)
+
+    Returns:
+        Dict containing metrics for each property
+    """
+    if properties is None:
+        # Get all property columns (those without _char/_token/_coreferences suffix)
+        true_cols = {
+            col
+            for col in true_df.columns
+            if not any(
+                col.endswith(s)
+                for s in [
+                    "_char_start",
+                    "_char_end",
+                    "_token_start",
+                    "_token_end",
+                    "_coreferences",
+                ]
+            )
+        }
+        pred_cols = {
+            col
+            for col in pred_df.columns
+            if not any(
+                col.endswith(s)
+                for s in [
+                    "_char_start",
+                    "_char_end",
+                    "_token_start",
+                    "_token_end",
+                    "_coreferences",
+                ]
+            )
+        }
+        properties = true_cols.intersection(pred_cols)
+
+    metrics = {}
+    for prop in properties:
+        correct = 0
+        for true_idx, pred_idx in entity_matches:
+            true_val = true_df.iloc[true_idx].get(prop)
+            pred_val = pred_df.iloc[pred_idx].get(prop)
+            if true_val == pred_val:
+                correct += 1
+
+        precision = correct / len(entity_matches) if entity_matches else 0
+        recall = correct / len(true_df) if len(true_df) > 0 else 0
+        f1 = (
+            2 * (precision * recall) / (precision + recall)
+            if precision + recall > 0
+            else 0
+        )
+
+        metrics[f"{prop}_precision"] = precision
+        metrics[f"{prop}_recall"] = recall
+        metrics[f"{prop}_f1"] = f1
+
+    return metrics
+
+
+def evaluate_coreference_agreement(
+    true_df: pd.DataFrame,
+    pred_df: pd.DataFrame,
+    coref_true: dict,
+    coref_pred: dict,
+    min_iou: float = 0.5,
+) -> dict:
+    """Evaluate agreement on coreference clusters.
+
+    Args:
+        true_df: Ground truth entities DataFrame
+        pred_df: Predicted entities DataFrame
+        coref_true: Ground truth coreference map
+        coref_pred: Predicted coreference map
+        min_iou: Minimum IOU threshold for matching spans
+
+    Returns:
+        Dict containing coreference metrics
+    """
+    matched_clusters = 0
+    total_true = len(coref_true)
+    total_pred = len(coref_pred)
+
+    for _, true_cluster in coref_true.items():
+        for _, pred_cluster in coref_pred.items():
+            if compare_coreference_clusters(true_cluster, pred_cluster, min_iou):
+                matched_clusters += 1
+                break
+
+    precision = matched_clusters / total_pred if total_pred > 0 else 0
+    recall = matched_clusters / total_true if total_true > 0 else 0
+    f1 = (
+        2 * (precision * recall) / (precision + recall) if precision + recall > 0 else 0
+    )
+
+    return {"coref_precision": precision, "coref_recall": recall, "coref_f1": f1}
+
+
+def evaluate_model_agreement(
+    true_data: tuple[pd.DataFrame, pd.DataFrame, dict],
+    pred_data: tuple[pd.DataFrame, pd.DataFrame, dict],
+    min_iou: float = 0.5,
+    method: str = "char",
+) -> dict:
+    """Evaluate comprehensive agreement between two models.
+
+    Args:
+        true_data: Tuple of (instruments_df, agreements_df, coreference_map) for ground truth
+        pred_data: Tuple of (instruments_df, agreements_df, coreference_map) for predictions
+        min_iou: Minimum IOU threshold for matching spans
+        method: Either 'char' or 'token' for span comparison method
+
+    Returns:
+        Dict containing all evaluation metrics
+    """
+    true_instruments, true_agreements, true_coref = true_data
+    pred_instruments, pred_agreements, pred_coref = pred_data
+
+    # Match entities using specified method
+    instrument_matches = match_entities(
+        true_instruments, pred_instruments, true_coref, pred_coref, min_iou, method
+    )
+    agreement_matches = match_entities(
+        true_agreements, pred_agreements, true_coref, pred_coref, min_iou, method
+    )
+
+    # Evaluate types
+    instrument_type_metrics = evaluate_type_agreement(
+        true_instruments, pred_instruments, instrument_matches
+    )
+
+    # Evaluate properties
+    instrument_prop_metrics = evaluate_property_agreement(
+        true_instruments, pred_instruments, instrument_matches
+    )
+    agreement_prop_metrics = evaluate_property_agreement(
+        true_agreements, pred_agreements, agreement_matches
+    )
+
+    # Evaluate coreference
+    coref_metrics = evaluate_coreference_agreement(
+        true_instruments, pred_instruments, true_coref, pred_coref, min_iou
+    )
+
+    return {
+        "method": method,
+        "instruments": {
+            "matches": len(instrument_matches),
+            "total_true": len(true_instruments),
+            "total_pred": len(pred_instruments),
+            **instrument_type_metrics,
+            **instrument_prop_metrics,
+        },
+        "agreements": {
+            "matches": len(agreement_matches),
+            "total_true": len(true_agreements),
+            "total_pred": len(pred_agreements),
+            **agreement_prop_metrics,
+        },
+        "coreference": coref_metrics,
+    }
