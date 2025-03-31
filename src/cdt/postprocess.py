@@ -29,12 +29,45 @@ VALID_ATTRIBUTES = {
     "governed_by": r"^\d+$",
     "governs": r"^\d+(\s\d+)*$",
     "type": r"^(loan|bond|credit line|revolving credit)$",
+    "confidence": r"^(low|medium|high)$",
 }
 
 
 def normalize_whitespace(text: str) -> str:
     """Normalize whitespace: collapse multiple spaces and strip leading/trailing spaces."""
     return re.sub(r"\s+", " ", text).strip()
+
+
+def strip_common_additions(text: str) -> str:
+    r"""Remove common artifacts added by LLMs.
+
+    Cases covered:
+     - Removes all text before (and including) any "</think>" tag.
+     - If there is a markdown code block (i.e. ```xml\nCode...```), it
+        strips everything except the contents of the code block.
+
+    Args:
+        text: The text to be cleaned.
+    """
+    # Remove all text before (and including) any </think> tag
+    text = re.sub(r".*</think>", "", text, flags=re.DOTALL)
+
+    # If there is a markdown code block, strip everything except the contents
+    match = re.search(r"```xml\n(.*?)```", text, re.DOTALL)
+    if match:
+        text = match.group(1)
+
+    return text.strip()
+
+
+def standardize_llm_output(text: str) -> str:
+    """Normalize whitespaces and strip common additions from LLM output.
+
+    Args:
+        text: The text to be cleaned.
+    """
+    text = normalize_whitespace(strip_common_additions(text))
+    return text
 
 
 def get_llm_output_errors(output_html: str, original_text: str) -> list[str]:
@@ -56,12 +89,12 @@ def get_llm_output_errors(output_html: str, original_text: str) -> list[str]:
     soup = BeautifulSoup(output_html, "html.parser")
 
     # Check that the text content matches the original text (ignoring whitespace)
-    output_text = normalize_whitespace(soup.get_text())
+    cleaned_output_text = standardize_llm_output(soup.get_text())
     expected_text = normalize_whitespace(original_text)
     errors = []
-    if output_text != expected_text:
+    if cleaned_output_text != expected_text:
         errors.append(
-            "Stripped text does not match the original text. Please ensure all text is preserved."
+            "Stripped text does not match the original text. Please ensure all text is preserved and no commentary is added."
         )
 
     # Check all tags and their attributes
