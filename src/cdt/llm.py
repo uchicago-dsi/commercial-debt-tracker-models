@@ -41,10 +41,10 @@ def run_model_with_output_validation(
         model: The model from AutoModelForCausalLM
         tokenizer: The tokenizer to use
         instructions: The instructions to use
-        sample: row of dataframe with 'id' and 'text' columns
+        sample: row of dataframe with 'text_id' and 'text' columns
         max_retries: Maximum number of retries for a given sample
     """
-    sample_id = sample["id"]
+    sample_id = sample["text_id"]
     input_text = sample["text"]
     messages = [
         {
