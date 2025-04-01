@@ -17,7 +17,7 @@ def setup_logging(log_file: Path = None) -> logging.Logger:
 
     # Create formatters
     detailed_formatter = logging.Formatter(
-        "%(asctime)s | %(levelname)s | %(name)s | Job:%(slurm_job)s | %(message)s",
+        "%(asctime)s | %(levelname)s | %(name)s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
@@ -41,6 +41,4 @@ def add_slurm_job_id(logger: logging.Logger) -> None:
     Args:
         logger: Logger instance.
     """
-    job_id = os.getenv("SLURM_JOB_ID", "local")
-    logger = logging.LoggerAdapter(logger, {"slurm_job": job_id})
-    logger.info(f"Running job with ID: {job_id}")
+    return logger

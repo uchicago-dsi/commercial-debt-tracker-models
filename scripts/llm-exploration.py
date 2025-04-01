@@ -39,9 +39,9 @@ models = [
     "google/gemma-3-4b-it",
     # "google/gemma-3-1b-it",
     "Qwen/QwQ-32B",
-    #  "Qwen/Qwen2.5-Coder-7B-Instruct",
+    "Qwen/Qwen2.5-Coder-7B-Instruct",
     "Qwen/Qwen2.5-Coder-14B-Instruct",
-    # "Qwen/Qwen2.5-Coder-0.5B-Instruct",
+    "Qwen/Qwen2.5-Coder-0.5B-Instruct",
     "Qwen/Qwen2.5-7B-Instruct",
     "meta-llama/Llama-3.1-8B-Instruct",
     "microsoft/Phi-4-mini-instruct",
@@ -99,7 +99,6 @@ output_dir = Path(args.output_dir)
 if not Path(args.prompt_file).exists():
     raise ValueError(f"Prompt file {args.prompt_file} does not exist")
 prompt_file = Path(args.prompt_file)
-input_df = pd.read_csv(args.input_date)
 
 # Slurm setup
 if not args.gpu:
