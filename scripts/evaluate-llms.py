@@ -72,11 +72,11 @@ def process_and_format_outputs(directory: Path) -> tuple[dict, dict]:
             if not errors:
                 # Parse and format valid response
                 instruments_df, agreements_df, coref_map = parse_annotated_text(
-                    cleaned_response, text_id=row["input_text_id"]
+                    cleaned_response, text_id=row["text_id"]
                 )
                 valid_responses.append(
                     {
-                        "text_id": row["input_text_id"],
+                        "text_id": row["text_id"],
                         "instruments": instruments_df,
                         "agreements": agreements_df,
                         "coreferences": coref_map,

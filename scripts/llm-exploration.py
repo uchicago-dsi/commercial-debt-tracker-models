@@ -99,7 +99,6 @@ output_dir = Path(args.output_dir)
 if not Path(args.prompt_file).exists():
     raise ValueError(f"Prompt file {args.prompt_file} does not exist")
 prompt_file = Path(args.prompt_file)
-input_df = pd.read_csv(args.input_date)
 
 # Slurm setup
 if not args.gpu:

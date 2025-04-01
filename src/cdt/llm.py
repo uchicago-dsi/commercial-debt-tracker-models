@@ -83,7 +83,7 @@ def run_model_with_output_validation(
 
     results = {
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "input_text_id": sample_id,
+        "text_id": sample_id,
         "input_text": input_text,
         "response": response,
         "inference_time": end_time - start_time,

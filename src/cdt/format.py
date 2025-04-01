@@ -260,7 +260,7 @@ def format_llm_outputs(results_path: str) -> tuple[pd.DataFrame, pd.DataFrame, d
 
     Args:
         results_path (str): Path to CSV file containing LLM outputs.
-            Must have columns: input_text_id, input_text, response
+            Must have columns: text_id, input_text, response
 
     Returns:
         tuple: Combined instruments DataFrame, agreements DataFrame, and coreference map
@@ -271,7 +271,7 @@ def format_llm_outputs(results_path: str) -> tuple[pd.DataFrame, pd.DataFrame, d
     all_coreferences = {}
 
     for _, row in results_df.iterrows():
-        text_id = row["input_text_id"]
+        text_id = row["text_id"]
         response = row["response"]
 
         # Parse the response
