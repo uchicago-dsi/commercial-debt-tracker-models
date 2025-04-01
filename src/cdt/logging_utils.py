@@ -17,7 +17,7 @@ def setup_logging(log_file: Path = None) -> logging.Logger:
 
     # Create formatters
     detailed_formatter = logging.Formatter(
-        "%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+        "%(asctime)s | %(levelname)s | %(name)s | [%(job_id)s] | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
@@ -32,13 +32,28 @@ def setup_logging(log_file: Path = None) -> logging.Logger:
         file_handler = logging.FileHandler(log_file)
         file_handler.setFormatter(detailed_formatter)
         logger.addHandler(file_handler)
-    return logger
+
+    # Create logger adapter with job ID
+    job_id = os.environ.get("SLURM_JOB_ID", "local")
+    return logging.LoggerAdapter(logger, {"job_id": job_id})
 
 
-def add_slurm_job_id(logger: logging.Logger) -> None:
+def add_slurm_job_id(logger: logging.Logger) -> logging.Logger:
     """Add SLURM job ID to the logger context.
 
     Args:
         logger: Logger instance.
+
+    Returns:
+        Logger with SLURM job ID context added.
     """
-    return logger
+    # Get SLURM job ID from environment
+    slurm_job_id = os.environ.get("SLURM_JOB_ID", "local")
+    
+    # If logger is already a LoggerAdapter, update its extra dict
+    if isinstance(logger, logging.LoggerAdapter):
+        logger.extra["job_id"] = slurm_job_id
+        return logger
+    
+    # Otherwise create a new adapter
+    return logging.LoggerAdapter(logger, {"job_id": slurm_job_id})

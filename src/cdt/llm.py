@@ -100,6 +100,7 @@ def append_results_to_csv(
     prompt_commit: str,
     model_name: str,
     prompt_file: str,
+    logger: logging.Logger,
 ) -> None:
     """Append results to CSV file
 
@@ -109,8 +110,8 @@ def append_results_to_csv(
         prompt_commit: Commit hash of the prompt file
         model_name: Name of the model used
         prompt_file: Path to the prompt file
+        logger: Logger instance to use
     """
-    logger = logging.getLogger("cdt")
     results = pd.DataFrame(results)
     results["prompt_commit"] = prompt_commit
     results["model"] = model_name
@@ -146,18 +147,20 @@ def run_model_on_data(
         flush_every: Number of samples to process before flushing to CSV
         max_retries: Maximum number of retries for a given sample
     """
-    logger = logging.getLogger("cdt")
-    logger = add_slurm_job_id(logger)
+    # Initialize logger with job ID context
+    logger = add_slurm_job_id(logging.getLogger("cdt"))
     logger.info(f"Starting inference with model: {model_name}")
 
     with prompt_file.open("r", encoding="utf-8") as f:
         instructions = f.read()
     prompt_commit = get_files_last_commit_hash(prompt_file)
+    
     dtype = "auto" if "gemma" not in model_name else torch.float32
     model = AutoModelForCausalLM.from_pretrained(
         model_name, torch_dtype=dtype, device_map="auto"
     )
     tokenizer = AutoTokenizer.from_pretrained(model_name)
+
     results = []
     counter = 0
     for _, row in data.iterrows():
@@ -173,6 +176,7 @@ def run_model_on_data(
                 prompt_commit,
                 model_name,
                 prompt_file,
+                logger,
             )
             results = []
     if results:
@@ -182,13 +186,10 @@ def run_model_on_data(
             prompt_commit,
             model_name,
             prompt_file,
+            logger,
         )
-
-    avg_attempts = sum(r["attempts"] for r in results) / len(results)
-    avg_inference = sum(r["inference_time"] for r in results) / len(results)
 
     logger.info(f"Finished processing all samples for {model_name}")
     logger.info(f"Results written to {output_file}")
     logger.info(f"Total samples processed: {counter}")
-    logger.info(f"Average number of attempts per sample: {avg_attempts:.2f}")
-    logger.info(f"Average inference time per sample: {avg_inference:.2f}")
+
