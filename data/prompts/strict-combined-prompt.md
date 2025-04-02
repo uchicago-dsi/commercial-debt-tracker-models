@@ -74,6 +74,7 @@ These tags have the following allowable attributes:
 - Add a tag at the beginning to denote your confidence that your annotation is correct. Confidence should be either 'low', 'medium', or 'high'
   *Example:*
   `<meta confidence='high'/>
+- Surround your tagged paragraph in a `<body>` tag at the beginning and a `</body>` tag at the end.
 ---
 
 ### Examples
@@ -87,7 +88,7 @@ These tags have the following allowable attributes:
 
    *Output:*  
    ```
-   <meta confidence='high'/>On <start_date instrument="1">December 8th, 2023</start_date>, <borrower instrument="1 2">OpenAI</borrower> entered in a <name instrument="1" type="loan">term loan</name> for <amount instrument="1">$56 trillion</amount> with <lender instrument="1">SoftBank</lender>, <lender instrument="1">JPMorgan</lender>, <lender instrument="1">Citibank</lender>, and <lender instrument="1">other lenders</lender> thereto. The loan will be due in <duration instrument="1">2 years</duration> and will pay interest at <interest_rate instrument="1">LIBOR plus the greater of: (i) one tenth of one percent, (ii) one percent divided by the last two digits of the current year, or (iii) sixty minus the total points scored in the last Super Bowl</interest_rate>. The loan will be used <purpose instrument="1">to pay off the outstanding debt from the <amount instrument="2">$6 million</amount> <name instrument="2" type="loan">2021 Term Loan</name> dated <start_date instrument="2">August 8, 2021</start_date></purpose>.
+   <body><meta confidence='high'/>On <start_date instrument="1">December 8th, 2023</start_date>, <borrower instrument="1 2">OpenAI</borrower> entered in a <name instrument="1" type="loan">term loan</name> for <amount instrument="1">$56 trillion</amount> with <lender instrument="1">SoftBank</lender>, <lender instrument="1">JPMorgan</lender>, <lender instrument="1">Citibank</lender>, and <lender instrument="1">other lenders</lender> thereto. The loan will be due in <duration instrument="1">2 years</duration> and will pay interest at <interest_rate instrument="1">LIBOR plus the greater of: (i) one tenth of one percent, (ii) one percent divided by the last two digits of the current year, or (iii) sixty minus the total points scored in the last Super Bowl</interest_rate>. The loan will be used <purpose instrument="1">to pay off the outstanding debt from the <amount instrument="2">$6 million</amount> <name instrument="2" type="loan">2021 Term Loan</name> dated <start_date instrument="2">August 8, 2021</start_date></purpose>.</body>
    ```
 
 2. **Multiple Debt Instruments with Coreferences and Agreements**
@@ -99,7 +100,7 @@ These tags have the following allowable attributes:
 
    *Output:*  
    ```
-   On <start_date instrument="1 2 3 4 5">December 14, 2011</start_date>, <borrower instrument="1 2 3 4 5">CNH Equipment Trust 2011-C</borrower> publicly issued <amount instrument="1">$175,000,000</amount> of <name instrument="1" type="bond" coreference="a">Class A-1 Asset Backed Notes</name> (the <name instrument="1" coreference="a">Class A-1 Notes</name>), <amount instrument="2">$280,000,000</amount> of <name instrument="2" type="bond" coreference="b">Class A-2 Asset Backed Notes</name> (the <name instrument="2" coreference="b">Class A-2 Notes</name>), <amount instrument="3">$233,000,000</amount> of <name instrument="3" type="bond" coreference="c">Class A-3 Asset Backed Notes</name> (the <name instrument="3" coreference="c">Class A-3 Notes</name>), <amount instrument="4">$99,022,000</amount> of <name instrument="4" type="bond" coreference="d">Class A-4 Asset Backed Notes</name> (the <name instrument="4" coreference="d">Class A-4 Notes</name>) and <amount instrument="5">$23,923,000</amount> of <name instrument="5" type="bond" coreference="e">Class B Asset Backed Notes</name> (the <name instrument="5" coreference="e">Class B Notes, and together with the <name instrument="1" coreference="a">Class A-1 Notes</name>, the <name instrument="2" coreference="b">Class A-2 Notes</name>, the <name instrument="3" coreference="c">Class A-3 Notes</name> and the <name instrument="4" coreference="d">Class A-4 Notes</name>, the <name corefrence="a b c d e">Notes</name>) pursuant to the registration statement filed with the Securities and Exchange Commission on Form S-3 (File No. 333-170703) on November 19, 2010. The lead managers for the issuance of the <name coreference="a b c d e">Notes</name> were <underwriter instrument="1 2 3 4 5">Citigroup Global Markets Inc.</underwriter>, <underwriter instrument="1 2 3 4 5">Credit Agricole Securities (USA) Inc.</underwriter>, and <underwriter instrument="1 2 3 4 5">Credit Suisse Securities (USA) LLC</underwriter>.
+   <body>On <start_date instrument="1 2 3 4 5">December 14, 2011</start_date>, <borrower instrument="1 2 3 4 5">CNH Equipment Trust 2011-C</borrower> publicly issued <amount instrument="1">$175,000,000</amount> of <name instrument="1" type="bond" coreference="a">Class A-1 Asset Backed Notes</name> (the <name instrument="1" coreference="a">Class A-1 Notes</name>), <amount instrument="2">$280,000,000</amount> of <name instrument="2" type="bond" coreference="b">Class A-2 Asset Backed Notes</name> (the <name instrument="2" coreference="b">Class A-2 Notes</name>), <amount instrument="3">$233,000,000</amount> of <name instrument="3" type="bond" coreference="c">Class A-3 Asset Backed Notes</name> (the <name instrument="3" coreference="c">Class A-3 Notes</name>), <amount instrument="4">$99,022,000</amount> of <name instrument="4" type="bond" coreference="d">Class A-4 Asset Backed Notes</name> (the <name instrument="4" coreference="d">Class A-4 Notes</name>) and <amount instrument="5">$23,923,000</amount> of <name instrument="5" type="bond" coreference="e">Class B Asset Backed Notes</name> (the <name instrument="5" coreference="e">Class B Notes, and together with the <name instrument="1" coreference="a">Class A-1 Notes</name>, the <name instrument="2" coreference="b">Class A-2 Notes</name>, the <name instrument="3" coreference="c">Class A-3 Notes</name> and the <name instrument="4" coreference="d">Class A-4 Notes</name>, the <name corefrence="a b c d e">Notes</name>) pursuant to the registration statement filed with the Securities and Exchange Commission on Form S-3 (File No. 333-170703) on November 19, 2010. The lead managers for the issuance of the <name coreference="a b c d e">Notes</name> were <underwriter instrument="1 2 3 4 5">Citigroup Global Markets Inc.</underwriter>, <underwriter instrument="1 2 3 4 5">Credit Agricole Securities (USA) Inc.</underwriter>, and <underwriter instrument="1 2 3 4 5">Credit Suisse Securities (USA) LLC</underwriter>.</body>
    ```
 ---
 
@@ -107,7 +108,7 @@ These tags have the following allowable attributes:
 Given any input text describing debt instruments, agreements, and related properties, apply the above rules to annotate the text. Insert tags around each relevant property exactly as shown in the examples, preserving the original text and structure while adding the appropriate annotations with the required attributes.
 
 The only allowed tags are:
-    "name", "administrative_agent","underwriter", "other_related_party", "start_date", "end_date", "duration", "purpose", "borrower", "lender", "amount", "interest_rate", "meta"
+    "body", "name", "administrative_agent","underwriter", "other_related_party", "start_date", "end_date", "duration", "purpose", "borrower", "lender", "amount", "interest_rate", "meta"
 The only allowed attributes are:
     `instrument`, `coreference`, `agreement`, `amendment_of`, `split_of`, `governed_by`, `governs`, `type` 
 Use these compiled instructions to guide your annotations on any provided text. It is very important that you reply with the original text with these tags and attributes added and nothing else.
@@ -115,5 +116,5 @@ Use these compiled instructions to guide your annotations on any provided text. 
 - Preserve original text EXACTLY!
 - Never add or remove characters outside of HTML tags!!
 - ONLY USE TAGS AND ATTRIBUTES DEFINED IN THIS DOCUMENT!!
-- DO NOT RETURN COMMENTARY. ONLY RETURN THE TAGGED TEXT. 
+- SURROUND THE TAGGED TEXT IN <body></body> tags!!
 - BEFORE RESPONDING ENSURE RESPONSES FOLLOW ALL DIRECTIONS!! FAILURE TO DO SO IS CATASTROPHIC!!!
